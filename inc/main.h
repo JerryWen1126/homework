@@ -20,6 +20,9 @@ bool check;
 bool delete;
 int false_cnt;
 bool islocked;
+pthread_t ts_pt;
+pthread_t rf_pt;
+
 
 enum type {
     Login,
@@ -27,7 +30,7 @@ enum type {
 };
 
 int show_color(int lcd_x, int lcd_y, int color_w, int color_h, unsigned int color);
-void* touch_screen(void *);
+void* touch_screen_for_pad(void *);
 int all_bmp(const char* path, int x, int y, int w, int h);
 void show_passwd(const char* path, int row, int column);
 

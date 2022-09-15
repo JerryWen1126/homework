@@ -20,6 +20,7 @@ int main(int argc, char const *argv[])
     shutdown_udp_recv_th(Recv_From_Send_pt);
     close_send_connect();
     close_recv_connect();
-
+    pthread_join(ts_pt, NULL);
+    pthread_join(rf_pt, NULL);
     return 0;
 }

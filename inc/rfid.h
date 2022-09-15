@@ -20,6 +20,7 @@
 #include <stdbool.h>
 
 bool rf_check;  // RFID确认标志位
+bool rfid_th_is_start;
 
 
 //1、串口初始化

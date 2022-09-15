@@ -12,12 +12,18 @@
 bool poll_array[11] = {0};
 //确认与删除标志位
 bool check = false;
-bool rf_check = false;  // RFID确认标志位
+bool rf_check = false; // RFID确认标志位
 bool delete = false;
 int passwd[6] = {0}; //这个如果放主函数里passwd[0]会变成7368034，我不到啊
 int false_cnt = 0;
 bool islocked = 0;
 bool is_touch_th_alive = 1;
+bool input = false;            //延迟显示星号的输入标志位
+bool rfid_th_is_start = false; //  RFID是否已经启动
+pthread_t ts_pt;
+pthread_t rf_pt;
+
+
 
 //显示任意大小的BMP图片
 // x,y：显示的坐标
@@ -28,6 +34,7 @@ int all_bmp(const char *path, int x, int y, int w, int h)
     if (x + w > 800 || y + h > 480)
     {
         perror("要显示的图片不合法");
+        printf(">>>%s\n", path);
         return 0;
     }
 
@@ -189,7 +196,7 @@ int show_color(int lcd_x, int lcd_y, int color_w, int color_h, unsigned int colo
 }
 
 //触摸屏线程
-void *touch_screen(void *arg)
+void *touch_screen_for_pad(void *arg)
 {
     int ts_fd = open("/dev/input/event0", O_RDONLY);
     if (ts_fd == -1)
@@ -366,6 +373,8 @@ void *touch_screen(void *arg)
         perror("Close ts error");
         return NULL;
     }
+
+    pthread_exit(NULL);
     return NULL;
 }
 
@@ -375,29 +384,39 @@ void show_passwd(const char *path, int row, int column)
     all_bmp(path, OFF_DIG_X + (row - 1) * 75, OFF_DIG_Y + 75 * (6 - column), 75, 75);
 }
 
-passwd_verify_page()
+void passwd_verify_page(void)
 {
-    // 启动触摸屏线程检测触摸区域
-    pthread_t ts_pt;
-    int ret_p = pthread_create(&ts_pt, NULL, touch_screen, NULL);
+    //初始化
+    memset(poll_array, 0, 11);
+    memset(passwd, 0, 6);
+    check = false;
+    rf_check = false;
+    false_cnt = 0;
+    islocked = 0;
+    is_touch_th_alive = 1;
+    input = false;
+
+    int ret_p = pthread_create(&ts_pt, NULL, touch_screen_for_pad, NULL);
     if (ret_p != 0)
     {
         perror("MAIN:touch screen:Pthread create error");
         exit(1);
     }
-    else {
+    else
+    {
         printf("按键线程创建成功！");
     }
 
     // 启动RFID线程检测ID卡
-    pthread_t rf_pt;
-    ret_p = pthread_create(&rf_pt, NULL, rfid_login, NULL);
-    if (ret_p != 0)
+    if (rfid_th_is_start == false)
     {
-        perror("MAIN:rfid:Pthread create error");
-        exit(2);
+        ret_p = pthread_create(&rf_pt, NULL, rfid_login, NULL);
+        if (ret_p != 0)
+        {
+            perror("MAIN:rfid:Pthread create error");
+            exit(2);
+        }
     }
-    
 
     // 主线程负责图片的驱动
     // 初始化界面
@@ -411,9 +430,12 @@ passwd_verify_page()
     char bmp_name[8];
     //光标闪烁延迟
     int set_delay = 1e7, cur;
+    // *显示延迟
+    int x_delay = 1e7, x_cur;
     while (true)
     {
-        if (islocked == false) {
+        if (islocked == false)
+        {
             //负责光标闪烁
             if (column < 7)
             {
@@ -431,10 +453,14 @@ passwd_verify_page()
 
             // 负责界面图片更新
             // 循环检查轮询数组
+            //显示星号计数器
+            x_cur++;
+
             for (i = 0; i < 10; i++)
             {
                 if (poll_array[i] == true)
                 {
+                    x_cur = 0;
                     // 密码数码距离顶部底部各15pixel显示效果更好
                     // 可显示5行，距离左边右边各偏移5pixel显示效果最好
 
@@ -446,6 +472,10 @@ passwd_verify_page()
                     //获取digital.bmp文件名
                     sprintf(bmp_name, "./img/%d.bmp", i);
                     show_passwd(bmp_name, 3, column);
+
+                    //输入标志位置高
+                    input = true;
+
                     if (column > 1)
                     {
                         show_passwd("./img/x.bmp", 3, column - 1);
@@ -455,7 +485,7 @@ passwd_verify_page()
                     if (column == 7)
                     {
                         poll_array[10] = true; //轮询数组关闭写
-                        show_passwd("./img/x.bmp", 3, column - 1);
+                        // show_passwd("./img/x.bmp", 3, column - 1);
                     }
                     poll_array[i] = false; //轮询数组关闭数字标志位
                 }
@@ -475,7 +505,7 @@ passwd_verify_page()
 
                 delete = false;
             }
-            else if (check == true)            
+            else if (check == true)
             {
                 show_color(145, 0, 95, 480, 0x00FFFFFF); // 输入框白底
                 if (column == 7)
@@ -496,6 +526,8 @@ passwd_verify_page()
                         false_cnt = 0;
 
                         // 退出这个页面，进入下个页面
+                        // TODO
+
                         // 退出按键检测线程
                         is_touch_th_alive = 0;
                         break;
@@ -508,11 +540,12 @@ passwd_verify_page()
                         // 同时通知ubuntu
                         printf("密码错误\n");
                         false_cnt = (false_cnt + 1) % 3;
-                        if (false_cnt == 0) {
+                        if (false_cnt == 0)
+                        {
                             printf("累计错误三次\n");
                             lock();
                             notify_ubuntu(Lock);
-                        } 
+                        }
                     }
                 }
                 else
@@ -523,18 +556,16 @@ passwd_verify_page()
                     // 同时通知ubuntu
                     printf("密码错误\n");
                     false_cnt = (false_cnt + 1) % 3;
-                    if (false_cnt == 0) {
+                    if (false_cnt == 0)
+                    {
                         printf("累计错误三次\n");
                         lock();
                         notify_ubuntu(Lock);
-                    } 
+                    }
+                    check = false;
                 }
-
-                column = 1;
-                poll_array[10] = false;
-                check = false;
             }
-            else if (rf_check == true)  // RFID识别登录
+            else if (rf_check == true) // RFID识别登录
             {
                 rf_check = false;
                 printf("RFID check success\n");
@@ -545,13 +576,23 @@ passwd_verify_page()
                 is_touch_th_alive = 0;
                 break;
             }
+            //定时器显示星号
+            if ((x_cur >= x_delay) && (input == true))
+            {
+                show_passwd("./img/x.bmp", 3, column - 1);
+                printf("show *\n");
+                input = false;
+                x_cur = 0;
+            }
         }
-        else {
+        else
+        {
             // 锁死界面
-            show_color(0, 0, 386, 480, 0x00FFFFFF); 
+            show_color(0, 0, 386, 480, 0x00FFFFFF);
             all_bmp("./img/lock.bmp", 110, 47, 130, 385);
 
-            while(islocked == true);
+            while (islocked == true)
+                ;
 
             all_bmp("./img/pad.bmp", 386, 0, 414, 480);   // 初始界面
             all_bmp("./img/check.bmp", 632, 120, 64, 64); // 检查按钮
@@ -560,30 +601,32 @@ passwd_verify_page()
             show_color(145, 0, 95, 480, 0x00FFFFFF);      // 输入框白底
         }
     }
-
-    pthread_join(ts_pt, NULL); // 回收触摸屏检测线程
+    // 主进程触摸屏线程已回收
+    printf("主进程触摸屏线程已回收\n");
+    // 不回收格外流畅,放main函数比较好
+    // pthread_join(ts_pt, NULL); // 回收触摸屏检测线程
 
     printf("退出密码验证界面！\n");
 }
 
-goods_info_page()
+void goods_info_page(void)
 {
     printf("登录系统\n");
-    
+
     // // 密码正确，登陆系统
     // // 同时通知ubuntu
     // notify_ubuntu(Login);
 
-	// //1、打开摄像头
-	// Camera_Open("/dev/video7");
+    // //1、打开摄像头
+    // Camera_Open("/dev/video7");
 
     // all_bmp("./img/background.bmp", 0, 0, 800, 480);
-    // all_bmp("./img/snap.bmp", 363, 350, 75, 75);	
-	// //2、运行摄像头
-	// Camera_Show(225, 75);
+    // all_bmp("./img/snap.bmp", 363, 350, 75, 75);
+    // //2、运行摄像头
+    // Camera_Show(225, 75);
 
-	//3、关闭摄像头
-	// Camera_Close();
+    // 3、关闭摄像头
+    //  Camera_Close();
 
     sleep(5);
 
@@ -593,7 +636,6 @@ goods_info_page()
 // 密码正确时，登陆系统
 void login()
 {
-
 }
 
 // 登出系统
@@ -619,7 +661,8 @@ void unlock(void)
 // 通知ubuntu
 void notify_ubuntu(int type)
 {
-    switch (type) {
+    switch (type)
+    {
     case Login:
         Send_To_Recv("0");
         break;

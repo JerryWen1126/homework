@@ -79,7 +79,7 @@ pthread_t start_udp_recv_th(void* task)
 {
     if (is_udpRecv_th_alive == ALIVE) {
         printf("目前只支持创建一个线程！");
-        return NULL;
+        return -1;
     }
 
     is_udpRecv_th_alive = ALIVE;

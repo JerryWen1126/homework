@@ -131,8 +131,9 @@ int Get_IC_Code(void)
 
 void* rfid_login(void* arg)
 {
+    rfid_th_is_start = true;
 	int id;
-
+    printf("正在获取卡号\n");
 	id = Get_IC_Code();
 	printf("id =  0x%X\n",  id);
 	if (id == 0xDCDCBC69)
@@ -144,4 +145,7 @@ void* rfid_login(void* arg)
 	{
 		printf("你给我滚！！！\n");
 	}
+    printf("获取结束\n");
+    rfid_th_is_start = false;
+    pthread_exit(NULL);
 }
