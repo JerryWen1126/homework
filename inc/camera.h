@@ -15,6 +15,13 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <pthread.h>
+#include <stdbool.h>
+#include "font.h"
+
+
+bool is_snap;
+bool is_camera_open;    //是否启动摄像头
+char ch[128];	//存放显示的字
 
 //二、函数声明
 //1、打开摄像头

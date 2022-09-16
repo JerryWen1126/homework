@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include "jpeg.h"
 #include "jpeglib.h"
+#include <string.h>
 
 //二、宏定义区域
 #define LCD_WIDTH  			800

@@ -1,5 +1,10 @@
 {
     "files.associations": {
-        "rfid.h": "c"
+        "rfid.h": "c",
+        "camera.h": "c",
+        "jpeg.h": "c",
+        "strings.h": "c",
+        "unistd.h": "c",
+        "main.h": "c"
     }
 }

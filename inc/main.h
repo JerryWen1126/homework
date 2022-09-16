@@ -20,6 +20,7 @@ bool check;
 bool delete;
 int false_cnt;
 bool islocked;
+bool is_camera_open;    //是否启动摄像头
 pthread_t ts_pt;
 pthread_t rf_pt;
 
@@ -31,6 +32,10 @@ enum type {
 
 int show_color(int lcd_x, int lcd_y, int color_w, int color_h, unsigned int color);
 void* touch_screen_for_pad(void *);
+void *touch_screen_for_goods(void *);   //商品界面触摸屏
+void goods_info_page(void);
+
+
 int all_bmp(const char* path, int x, int y, int w, int h);
 void show_passwd(const char* path, int row, int column);
 

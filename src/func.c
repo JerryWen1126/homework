@@ -17,13 +17,14 @@ bool delete = false;
 int passwd[6] = {0}; //这个如果放主函数里passwd[0]会变成7368034，我不到啊
 int false_cnt = 0;
 bool islocked = 0;
-bool is_touch_th_alive = 1;
+bool is_ts_th_pad_alive = 1;
+bool is_ts_th_good_alive = 1;
 bool input = false;            //延迟显示星号的输入标志位
 bool rfid_th_is_start = false; //  RFID是否已经启动
+bool is_snap = false;   //是否开始拍照
+bool is_camera_open = false;    //是否启动摄像头
 pthread_t ts_pt;
 pthread_t rf_pt;
-
-
 
 //显示任意大小的BMP图片
 // x,y：显示的坐标
@@ -210,9 +211,9 @@ void *touch_screen_for_pad(void *arg)
     int ts_y = 0;
     int touch = 0;
 
-    while (is_touch_th_alive == true)
+    while (is_ts_th_pad_alive == true)
     {
-        while (1)
+        while (is_ts_th_pad_alive == true)
         {
             memset(&ts_buf, 0, sizeof(ts_buf));
             read(ts_fd, &ts_buf, sizeof(ts_buf));
@@ -237,7 +238,7 @@ void *touch_screen_for_pad(void *arg)
         // printf("(%d, %d, %d)\n", ts_x, ts_y, touch); // touch：按下是1，松开是0
 
         //如果松开
-        if (!touch)
+        if (!touch && is_ts_th_pad_alive)
         {
             all_bmp("./img/pad.bmp", 386, 0, 414, 480);
             all_bmp("./img/check.bmp", 632, 120, 64, 64); // 检查按钮
@@ -378,6 +379,83 @@ void *touch_screen_for_pad(void *arg)
     return NULL;
 }
 
+void *touch_screen_for_goods(void *arg)
+{
+    int ts_fd = open("/dev/input/event0", O_RDONLY);
+    if (ts_fd == -1)
+    {
+        perror("打开文件失败！\n");
+        return NULL;
+    }
+
+    struct input_event ts_buf;
+    int ts_x = 0;
+    int ts_y = 0;
+    int touch = 0;
+
+    while (is_ts_th_good_alive == true)
+    {
+        while (is_ts_th_good_alive == true)
+        {
+            memset(&ts_buf, 0, sizeof(ts_buf));
+            read(ts_fd, &ts_buf, sizeof(ts_buf));
+
+            // 获取x
+            if (ts_buf.type == EV_ABS && ts_buf.code == ABS_X)
+            {
+                ts_x = ts_buf.value;
+            }
+            // 获取y
+            if (ts_buf.type == EV_ABS && ts_buf.code == ABS_Y)
+            {
+                ts_y = ts_buf.value;
+            }
+            // 获取触摸值
+            if (ts_buf.type == EV_KEY && ts_buf.code == BTN_TOUCH)
+            {
+                touch = ts_buf.value;
+                break;
+            }
+        }
+        printf("(%d, %d, %d)\n", ts_x, ts_y, touch); // touch：按下是1，松开是0
+
+        //如果松开
+        if (!touch && is_ts_th_good_alive)
+        {
+            // all_bmp("./img/background.bmp", 0, 0, 800, 480);
+            all_bmp("./img/back_to_pad.bmp", 0, 0, 75, 75); //返回主界面
+            all_bmp("./img/snap.bmp", 363, 350, 75, 75);    // 拍照按钮
+        }
+        //按下返回
+        else if (ts_x > 0 && ts_x < 75 && ts_y > 0 && ts_y < 75 && touch == 1)
+        {
+            printf("按下返回\n");
+            is_camera_open = false;
+        }
+        else if (ts_x > 363 && ts_x < 438 && ts_y > 350 && ts_y < 425 && touch == 1)
+        {
+            printf("按下拍照\n");
+            int i;
+            is_snap = true;
+            for (i = 0; i < 10; i++)
+            {
+                all_bmp("./img/background.bmp", 0, 0, 800, 480);
+            }
+            is_snap = false;
+        }
+    }
+
+    int ret_c = close(ts_fd);
+    if (ret_c == -1)
+    {
+        perror("Close ts error");
+        return NULL;
+    }
+
+    pthread_exit(NULL);
+    return NULL;
+}
+
 //经计算后的屏幕分区函数
 void show_passwd(const char *path, int row, int column)
 {
@@ -386,6 +464,7 @@ void show_passwd(const char *path, int row, int column)
 
 void passwd_verify_page(void)
 {
+    printf("开始验证密码\n");
     //初始化
     memset(poll_array, 0, 11);
     memset(passwd, 0, 6);
@@ -393,7 +472,7 @@ void passwd_verify_page(void)
     rf_check = false;
     false_cnt = 0;
     islocked = 0;
-    is_touch_th_alive = 1;
+    is_ts_th_pad_alive = 1;
     input = false;
 
     int ret_p = pthread_create(&ts_pt, NULL, touch_screen_for_pad, NULL);
@@ -525,11 +604,19 @@ void passwd_verify_page(void)
                         // 错误计数器清零
                         false_cnt = 0;
 
-                        // 退出这个页面，进入下个页面
                         // TODO
+                        if (rfid_th_is_start == true)
+                        {
+                            pthread_cancel(rf_pt);
+                            rfid_th_is_start = false;
+                        }
 
                         // 退出按键检测线程
-                        is_touch_th_alive = 0;
+                        is_ts_th_pad_alive = 0;
+
+                        // 退出这个页面，进入下个页面
+                        // goods_info_page();
+
                         break;
                     }
                     else
@@ -571,9 +658,12 @@ void passwd_verify_page(void)
                 printf("RFID check success\n");
                 notify_ubuntu(Login);
 
-                // 退出这个页面，进入下个页面
                 // 退出按键检测线程
-                is_touch_th_alive = 0;
+                is_ts_th_pad_alive = 0;
+
+                // 退出这个页面，进入下个页面
+                // goods_info_page();
+
                 break;
             }
             //定时器显示星号
@@ -611,24 +701,52 @@ void passwd_verify_page(void)
 
 void goods_info_page(void)
 {
+    is_ts_th_good_alive = true; //允许启动商品触摸屏检测线程
     printf("登录系统\n");
 
     // // 密码正确，登陆系统
     // // 同时通知ubuntu
-    // notify_ubuntu(Login);
+    notify_ubuntu(Login);
 
     // //1、打开摄像头
-    // Camera_Open("/dev/video7");
+    Camera_Open("/dev/video7");
 
-    // all_bmp("./img/background.bmp", 0, 0, 800, 480);
-    // all_bmp("./img/snap.bmp", 363, 350, 75, 75);
+    pthread_t ts_good_pt;
+    int ret_p = pthread_create(&ts_good_pt, NULL, touch_screen_for_goods, NULL);
+    if (ret_p != 0)
+    {
+        perror("GOODS:touch screen:Pthread create error");
+        exit(1);
+    }
+    else
+    {
+        printf("商品按键线程创建成功！");
+    }
+
+    is_camera_open = true;  //解除摄像头死循环,因为退出商品RFID检测线程使用了该标志位，必须在启动RFID检测线程之前
+
+    pthread_t rf_good_pt;
+    ret_p = pthread_create(&rf_good_pt, NULL, rfid_goods_check, NULL);
+    if (ret_p != 0)
+    {
+        perror("GOODS:RFID:Pthread create error");
+        exit(1);
+    }
+    else
+    {
+        printf("商品RFID检测线程创建成功!");
+    }
+
+
+    all_bmp("./img/background.bmp", 0, 0, 800, 480);
+    all_bmp("./img/snap.bmp", 363, 350, 75, 75);
+    all_bmp("./img/back_to_pad.bmp", 0, 0, 75, 75); //返回主界面
     // //2、运行摄像头
-    // Camera_Show(225, 75);
+    Camera_Show(225, 75);
+    is_ts_th_good_alive = false;    //关闭商品界面触摸屏线程
 
     // 3、关闭摄像头
-    //  Camera_Close();
-
-    sleep(5);
+    Camera_Close();
 
     printf("退出商品信息页面！\n");
 }

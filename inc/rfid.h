@@ -21,6 +21,8 @@
 
 bool rf_check;  // RFID确认标志位
 bool rfid_th_is_start;
+bool is_camera_open;    //是否启动摄像头
+char ch[128];	//存放显示的字
 
 
 //1、串口初始化
@@ -39,6 +41,8 @@ int rfid_send_B(int tty1);
 int Get_IC_Code(void);
 
 void* rfid_login(void*);
+
+void *rfid_goods_check(void *);
 
 #endif /* __RFID_H */
 

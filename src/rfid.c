@@ -31,11 +31,12 @@ int tty_init(int fd)
     return 0;
 }
 // 2、校验位数据获取
-char get_bcc(int n, char* buf)
+char get_bcc(int n, char *buf)
 {
     int i;
     char BCC = 0;
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < n; i++)
+    {
         BCC ^= buf[i];
     }
     return (~BCC);
@@ -44,27 +45,31 @@ char get_bcc(int n, char* buf)
 // 3、查找范围内是否有卡的存在
 int rfid_send_A(int tty1)
 {
-    char rbuf[8] = { 0 };
-    char wbuf[8] = { 0 };
-    wbuf[0] = 0x07; //数据帧长度
-    wbuf[1] = 0x02; //使用ISO14443A协议
-    wbuf[2] = 0x41; //使用A命令
-    wbuf[3] = 0x01; //数据长度
-    wbuf[4] = 0x52; //选择所有
+    char rbuf[8] = {0};
+    char wbuf[8] = {0};
+    wbuf[0] = 0x07;                       //数据帧长度
+    wbuf[1] = 0x02;                       //使用ISO14443A协议
+    wbuf[2] = 0x41;                       //使用A命令
+    wbuf[3] = 0x01;                       //数据长度
+    wbuf[4] = 0x52;                       //选择所有
     wbuf[5] = get_bcc(wbuf[0] - 2, wbuf); //校验位
-    wbuf[6] = 0x03; //结束符
+    wbuf[6] = 0x03;                       //结束符
 
-    while (1) {
+    while (1)
+    {
         //清空缓冲区
         tcflush(tty1, TCIFLUSH);
         write(tty1, wbuf, 7);
         rbuf[2] = -1;
         read(tty1, rbuf, sizeof(rbuf));
         //判断rfid模块返回数据是否正确
-        if (rbuf[2] == 0) {
+        if (rbuf[2] == 0)
+        {
             // printf("send a ok!\n");
             break;
-        } else {
+        }
+        else
+        {
             sleep(1);
             printf("No card information around!\n");
         }
@@ -77,29 +82,33 @@ int rfid_send_A(int tty1)
 int rfid_send_B(int tty1)
 {
     int cardid = 0;
-    char qbuf[10] = { 0 };
-    char wbuf[8] = { 0 };
+    char qbuf[10] = {0};
+    char wbuf[8] = {0};
 
     //防碰撞（获取卡号信息），
-    wbuf[0] = 0x08; //数据帧长度
-    wbuf[1] = 0x02; //使用ISO14443A协议
-    wbuf[2] = 'B'; //使用B命令
-    wbuf[3] = 0x02; //数据长度
-    wbuf[4] = 0x93; //第一级防碰撞
-    wbuf[5] = 0x00; //位计数为0
+    wbuf[0] = 0x08;                       //数据帧长度
+    wbuf[1] = 0x02;                       //使用ISO14443A协议
+    wbuf[2] = 'B';                        //使用B命令
+    wbuf[3] = 0x02;                       //数据长度
+    wbuf[4] = 0x93;                       //第一级防碰撞
+    wbuf[5] = 0x00;                       //位计数为0
     wbuf[6] = get_bcc(wbuf[0] - 2, wbuf); //校验位
-    wbuf[7] = 0x03; //结束符
+    wbuf[7] = 0x03;                       //结束符
 
-    while (1) {
+    while (is_camera_open)
+    {
         tcflush(tty1, TCIFLUSH);
         write(tty1, wbuf, 8);
         qbuf[2] = -1;
         read(tty1, qbuf, sizeof(qbuf)); // scanf
-        if (qbuf[2] == 0) {
+        if (qbuf[2] == 0)
+        {
             // printf("send b ok!\n");
             cardid = qbuf[4] << 0 | qbuf[5] << 8 | qbuf[6] << 16 | qbuf[7] << 24;
             return cardid;
-        } else {
+        }
+        else
+        {
             printf("faield\n");
             rfid_send_A(tty1);
             sleep(1);
@@ -115,7 +124,8 @@ int Get_IC_Code(void)
 
     // 1、打开串口1
     int tty1 = open("/dev/ttySAC1", O_RDWR | O_NOCTTY);
-    if (tty1 == -1) {
+    if (tty1 == -1)
+    {
         perror("open tty1 failed");
         return -1;
     }
@@ -129,23 +139,46 @@ int Get_IC_Code(void)
     return rfid_send_B(tty1);
 }
 
-void* rfid_login(void* arg)
+void *rfid_login(void *arg)
 {
     rfid_th_is_start = true;
-	int id;
+    int id;
     printf("正在获取卡号\n");
-	id = Get_IC_Code();
-	printf("id =  0x%X\n",  id);
-	if (id == 0xDCDCBC69)
-	{
-		printf("欢迎光临！！\n");
-		rf_check = true;
-	}
-	else
-	{
-		printf("你给我滚！！！\n");
-	}
+    id = Get_IC_Code();
+    printf("id =  0x%X\n", id);
+    if (id == 0xDCDCBC69)
+    {
+        printf("欢迎光临！！\n");
+        rf_check = true;
+    }
+    else
+    {
+        printf("你给我滚！！！\n");
+    }
     printf("获取结束\n");
+    rfid_th_is_start = false;
+    pthread_exit(NULL);
+}
+
+void *rfid_goods_check(void *arg)
+{
+    int id;
+    rfid_th_is_start = true;
+
+    while (is_camera_open)
+    {
+        // memset(ch, 0, sizeof(ch));
+        printf("正在获取商品编号\n");
+        id = Get_IC_Code();// 会阻塞等待卡片
+        printf("id =  0x%X\n", id);
+        //在这里进行字体显示不好操作，将商品编号传给全局数组，让摄像头线程进行显示，方便在刷摄像头画面的时候显示
+        sprintf(ch, "卡号：0x%X", id);
+        printf("ch:%s\n", ch);
+        printf("获取结束\n");
+    }
+    
+
+
     rfid_th_is_start = false;
     pthread_exit(NULL);
 }
